@@ -8,7 +8,7 @@ import glob
 from datetime import datetime
 import getpass
 
-# Script Logos -> Obsidian (Versão Final Otimizada)
+# Script Logos -> Markdown (Versão Final Otimizada)
 # Foco exclusivo em Notas e Sermões Pessoais
 # Autor: Gemini CLI
 
@@ -168,7 +168,7 @@ def get_default_logos_path():
     return ""
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Exportador de Notas e Sermões do Logos para Obsidian.')
+    parser = argparse.ArgumentParser(description='Exportador de Notas e Sermões do Logos para Markdown.')
     
     default_logos = get_default_logos_path()
     

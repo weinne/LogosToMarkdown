@@ -27,12 +27,12 @@ sudo apt install python3
 
 ## Como Usar
 
-1. Baixe o arquivo `logos_to_obsidian.py`.
+1. Baixe o arquivo `logos_to_markdown.py`.
 2. Abra o terminal ou prompt de comando na pasta onde o arquivo está.
 3. Execute o script:
 
 ```bash
-python3 logos_to_obsidian.py --output Logos_Vault
+python3 logos_to_markdown.py --output Logos_Vault
 ```
 
 ### Onde está o diretório do Logos?
@@ -45,7 +45,7 @@ Geralmente fica em:
 
 Para usar no comando:
 ```bash
-python3 logos_to_obsidian.py --logos-path "C:\Users\NomeDoUsuario\AppData\Local\Logos" --output MinhasNotas
+python3 logos_to_markdown.py --logos-path "C:\Users\NomeDoUsuario\AppData\Local\Logos" --output MinhasNotas
 ```
 
 #### No Linux:
@@ -54,7 +54,7 @@ Se você usa o script `oudedetai` da FaithLife-Community, o caminho costuma ser 
 
 Exemplo de uso:
 ```bash
-python3 logos_to_obsidian.py --logos-path "/caminho/para/o/logos" --output Logos_Vault
+python3 logos_to_markdown.py --logos-path "/caminho/para/o/logos" --output Logos_Vault
 ```
 
 ## Parâmetros Disponíveis
