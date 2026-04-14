@@ -1,6 +1,6 @@
-# Logos to Obsidian Export
+# Logos to Markdown Export
 
-Este script automatiza a exportação de Notas e Sermões do **Logos Bible Software** para arquivos Markdown compatíveis com o **Obsidian**.
+Este script automatiza a exportação de Notas e Sermões do **Logos Bible Software** para arquivos Markdown compatíveis com aplicativos como o **Obsidian**.
 
 ## Funcionalidades
 - **Notas:** Exporta suas notas organizadas por cadernos (Notebooks).
