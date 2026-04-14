@@ -6,6 +6,7 @@ import re
 import argparse
 import glob
 from datetime import datetime
+import getpass
 
 # Script Logos -> Obsidian (Versão Final Otimizada)
 # Foco exclusivo em Notas e Sermões Pessoais
@@ -147,14 +148,46 @@ def export_sermons(db_path, base_output):
         with open(os.path.join(output_dir, filename), "w", encoding="utf-8") as f: f.write(md)
     conn.close()
 
+def get_default_logos_path():
+    """Tenta detectar o caminho padrão do Logos baseado no SO."""
+    if os.name == 'nt':  # Windows
+        local_app_data = os.environ.get('LOCALAPPDATA')
+        if local_app_data:
+            return os.path.join(local_app_data, "Logos")
+    else:  # Linux/Unix (Assume-se oudedetai ou caminho customizado)
+        # Tenta encontrar o caminho padrão do oudedetai se existir
+        home = os.path.expanduser("~")
+        user = getpass.getuser()
+        possible_paths = [
+            os.path.join(home, ".local/share/FaithLife-Community/oudedetai/data/wine64_bottle/drive_c/users", user, "AppData/Local/Logos"),
+            os.path.join(home, ".local/share/LogosBibleSoftware/Data/wine64_bottle/drive_c/users", user, "AppData/Local/Logos")
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+    return ""
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Exportador de Notas e Sermões do Logos para Obsidian.')
-    default_logos = "/home/weinne/.local/share/FaithLife-Community/oudedetai/data/wine64_bottle/drive_c/users/weinne/AppData/Local/Logos"
-    parser.add_argument('--logos-path', '-l', default=default_logos, help='Caminho da pasta do Logos')
-    parser.add_argument('--output', '-o', default='Logos_Vault', help='Pasta de destino')
+    
+    default_logos = get_default_logos_path()
+    
+    parser.add_argument('--logos-path', '-l', default=default_logos, help='Caminho da pasta do Logos (AppData/Local/Logos)')
+    parser.add_argument('--output', '-o', default='Logos_Vault', help='Pasta de destino para os arquivos Markdown')
 
     args = parser.parse_args()
+    
+    if not args.logos_path or not os.path.exists(args.logos_path):
+        print(f"Erro: O caminho do Logos não foi encontrado: '{args.logos_path}'")
+        print("Use --logos-path para especificar o caminho manualmente.")
+        exit(1)
+
     dbs = find_databases(args.logos_path)
+
+    if not dbs['notes'] and not dbs['sermons']:
+        print(f"Erro: Não foram encontrados bancos de dados do Logos em: {args.logos_path}")
+        print("Verifique se o caminho aponta para a pasta 'Logos' dentro de AppData/Local.")
+        exit(1)
 
     if dbs['notes']: export_notes(dbs['notes'], args.output)
     if dbs['sermons']: export_sermons(dbs['sermons'], args.output)
