@@ -12,54 +12,112 @@ import getpass
 # Foco exclusivo em Notas e Sermões Pessoais
 # Autor: Gemini CLI
 
-def parse_logos_data(data):
+def parse_logos_data(data, kind=None, indent=0):
     """Extrai texto de um dado que pode ser XML ou Texto Puro"""
     if not data: return ""
     
     if isinstance(data, bytes):
-        # Tenta encontrar o início de uma tag XML
         start_idx = data.find(b'<')
         if start_idx != -1:
             try:
                 xml_part = data[start_idx:].decode('utf-8', errors='ignore')
-                return parse_logos_xml(xml_part)
+                return parse_logos_xml(xml_part, kind, indent)
             except: pass
-        
-        # Fallback: decodificação limpa
         try:
             text = data.decode('utf-8', errors='ignore')
             return re.sub(r'[\x00-\x1f]', '', text)
-        except:
-            return ""
+        except: return ""
 
-    return parse_logos_xml(str(data))
+    return parse_logos_xml(str(data), kind, indent)
 
-def parse_logos_xml(xml_content):
+def parse_logos_xml(xml_content, kind=None, indent=0):
     if not xml_content: return ""
     xml_content = xml_content.replace('\x00', '').strip()
     
-    if not xml_content.startswith('<'):
+    if not xml_content.startswith('<') and '<Run' not in xml_content:
         return re.sub(r'[\x00-\x1f]', '', xml_content)
 
     try:
         clean_xml = xml_content.replace("&quot;", "\"").replace("&nbsp;", " ").replace("&amp;", "&")
         if not clean_xml.endswith('>'):
-            clean_xml = clean_xml[:clean_xml.rfind('>')+1]
+            last_gt = clean_xml.rfind('>')
+            if last_gt != -1:
+                clean_xml = clean_xml[:last_gt+1]
             
         root = ET.fromstring(f"<root>{clean_xml}</root>")
-        md_text = []
+        md_blocks = []
         
-        # Captura tags Run de forma recursiva (suporta Bold e Italic)
-        for run in root.findall(".//Run"):
-            text = run.get("Text", "")
-            if not text: continue
-            if run.get("Bold") == "true" or run.get("FontBold") == "true": 
-                text = f"**{text}**"
-            if run.get("Italic") == "true" or run.get("FontItalic") == "true": 
-                text = f"*{text}*"
-            md_text.append(text)
+        paragraphs = root.findall(".//Paragraph")
+        if paragraphs:
+            for para in paragraphs:
+                style = para.get("Style", "")
+                para_text = []
+                for run in para.findall(".//Run"):
+                    text = run.get("Text", "")
+                    if not text: continue
+                    
+                    bold = (run.get("Bold") or "").lower() == "true" or (run.get("FontBold") or "").lower() == "true"
+                    italic = (run.get("Italic") or "").lower() == "true" or (run.get("FontItalic") or "").lower() == "true"
+                    underline = (run.get("Underline") or "").lower() == "true" or (run.get("FontUnderline") or "").lower() == "true"
+                    strikethrough = (run.get("Strikethrough") or "").lower() == "true" or (run.get("FontStrikethrough") or "").lower() == "true"
+
+                    if bold: text = f"**{text}**"
+                    if italic: text = f"*{text}*"
+                    if underline: text = f"<u>{text}</u>"
+                    if strikethrough: text = f"~~{text}~~"
+                    
+                    href = run.get("Hyperlink")
+                    if href: text = f"[{text}]({href})"
+                    para_text.append(text)
+                
+                content = "".join(para_text).strip()
+                if not content: continue
+                
+                prefix = ""
+                if "Heading 1" in style: prefix = "# "
+                elif "Heading 2" in style: prefix = "## "
+                elif "Heading 3" in style: prefix = "### "
+                elif "Blockquote" in style: prefix = "> "
+                
+                list_level = para.get("ListLevel")
+                if list_level:
+                    try: prefix = ("  " * (int(list_level) - 1)) + "- "
+                    except: prefix = "- "
+                
+                md_blocks.append(prefix + content)
+        else:
+            current_text = []
+            for run in root.findall(".//Run"):
+                text = run.get("Text", "")
+                if not text: continue
+                
+                bold = (run.get("Bold") or "").lower() == "true" or (run.get("FontBold") or "").lower() == "true"
+                italic = (run.get("Italic") or "").lower() == "true" or (run.get("FontItalic") or "").lower() == "true"
+                
+                if bold: text = f"**{text}**"
+                if italic: text = f"*{text}*"
+                
+                href = run.get("Hyperlink")
+                if href: text = f"[{text}]({href})"
+                current_text.append(text)
+                
+            content = "".join(current_text).strip()
+            if content:
+                prefix = ""
+                if kind:
+                    if "heading1" in kind: prefix = "# "
+                    elif "heading2" in kind: prefix = "## "
+                    elif "heading3" in kind: prefix = "### "
+                    elif "blockquote" in kind: prefix = "> "
+                    elif "number" in kind: prefix = "1. "
+                    elif "illustration" in kind: prefix = "*Ilustração:* "
+                
+                if indent > 0:
+                    prefix = ("  " * indent) + (prefix or "- ")
+                
+                md_blocks.append(prefix + content)
             
-        return "".join(md_text)
+        return "\n\n".join(md_blocks)
     except Exception:
         text = re.sub(r'<[^>]+>', '', xml_content)
         return re.sub(r'[\x00-\x1f]', '', text)
@@ -104,18 +162,24 @@ def export_notes(db_path, base_output):
         folder = os.path.join(output_dir, nb_name)
         if not os.path.exists(folder): os.makedirs(folder)
         
+        anchors_text = ""
         title = parse_logos_data(note['ClippingTitleRichText']).strip()
-        if not title and note['AnchorsJson']:
+        if note['AnchorsJson']:
             try:
                 anchors = json.loads(note['AnchorsJson'])
-                title = anchors[0]['reference']['raw'].split('+')[-1].replace('.', ' ')
+                refs = [a['reference']['raw'].split('+')[-1].replace('.', ' ') for a in anchors if 'reference' in a]
+                if refs:
+                    anchors_text = "\n\n**Referências:** " + ", ".join(refs)
+                if not title and refs:
+                    title = refs[0]
             except: pass
+            
         if not title: title = f"Nota_{note['NoteId']}"
         
         filename = f"{sanitize_filename(title)}_{note['NoteId']}.md"
         content = parse_logos_data(note['ContentRichText'])
         
-        md = f"---\ntitle: \"{title}\"\ncreated: {note['CreatedDate']}\nsource: Logos Notes\n---\n\n{content}"
+        md = f"---\ntitle: \"{title}\"\ncreated: {note['CreatedDate']}\nsource: Logos Notes\n---\n\n{content}{anchors_text}"
         with open(os.path.join(folder, filename), "w", encoding="utf-8") as f: f.write(md)
     conn.close()
 
@@ -134,13 +198,13 @@ def export_sermons(db_path, base_output):
     for sermon in sermons:
         s_id = sermon['Id']
         title = sermon['Title'] or f"Sermao_{s_id}"
-        cursor.execute("SELECT Content FROM Blocks WHERE DocumentId = ? AND IsDeleted = 0 ORDER BY Rank", (s_id,))
+        cursor.execute("SELECT Content, Kind, Indent FROM Blocks WHERE DocumentId = ? AND IsDeleted = 0 ORDER BY Rank", (s_id,))
         blocks = cursor.fetchall()
         
         full_text = []
         for b in blocks:
             if b['Content']:
-                t = parse_logos_data(b['Content'])
+                t = parse_logos_data(b['Content'], kind=b['Kind'], indent=b['Indent'])
                 if t: full_text.append(t)
         
         filename = f"{sanitize_filename(title)}.md"
