@@ -7,10 +7,96 @@ import argparse
 import glob
 from datetime import datetime
 import getpass
+import locale
+import sys
+import ctypes
 
 # Script Logos -> Markdown (Versão Final Otimizada)
 # Foco exclusivo em Notas e Sermões Pessoais
 # Autor: Gemini CLI
+
+# --- Internationalization ---
+TRANSLATIONS = {
+    'en': {
+        'folder_notes': 'Notes',
+        'folder_sermons': 'Sermons',
+        'folder_vault': 'Logos_Vault',
+        'label_illustration': 'Illustration',
+        'label_references': 'References',
+        'no_title': 'No_Title',
+        'no_notebook': 'No Notebook',
+        'default_note_name': 'Note',
+        'default_sermon_name': 'Sermon',
+        'msg_exporting_notes': 'Exporting {count} Notes...',
+        'msg_exporting_sermons': 'Exporting {count} Sermons...',
+        'err_logos_path_not_found': 'Error: Logos path not found: "{path}"',
+        'err_logos_path_usage': 'Use --logos-path to specify the path manually.',
+        'err_dbs_not_found': 'Error: No Logos databases found in: {path}',
+        'err_dbs_hint': "Check if the path points to the 'Logos' folder inside AppData/Local.",
+        'msg_success': "\nSuccess! Your Notes and Sermons are in: '{path}'",
+        'arg_desc': 'Logos Notes and Sermons to Markdown Exporter.',
+        'arg_logos_path': 'Logos folder path (AppData/Local/Logos)',
+        'arg_output': 'Destination folder for Markdown files',
+        'source_notes': 'Logos Notes',
+        'source_sermons': 'Logos Sermon Builder',
+    },
+    'pt_br': {
+        'folder_notes': 'Notas',
+        'folder_sermons': 'Sermoes',
+        'folder_vault': 'Logos_Vault',
+        'label_illustration': 'Ilustração',
+        'label_references': 'Referências',
+        'no_title': 'Sem_Titulo',
+        'no_notebook': 'Sem Caderno',
+        'default_note_name': 'Nota',
+        'default_sermon_name': 'Sermao',
+        'msg_exporting_notes': 'Exportando {count} Notas...',
+        'msg_exporting_sermons': 'Exportando {count} Sermões...',
+        'err_logos_path_not_found': "Erro: O caminho do Logos não foi encontrado: '{path}'",
+        'err_logos_path_usage': 'Use --logos-path para especificar o caminho manualmente.',
+        'err_dbs_not_found': 'Erro: Não foram encontrados bancos de dados do Logos em: {path}',
+        'err_dbs_hint': "Verifique se o caminho aponta para a pasta 'Logos' dentro de AppData/Local.",
+        'msg_success': "\nSucesso! Suas Notas e Sermões estão em: '{path}'",
+        'arg_desc': 'Exportador de Notas e Sermões do Logos para Markdown.',
+        'arg_logos_path': 'Caminho da pasta do Logos (AppData/Local/Logos)',
+        'arg_output': 'Pasta de destino para os arquivos Markdown',
+        'source_notes': 'Logos Notas',
+        'source_sermons': 'Logos Sermon Builder',
+    }
+}
+
+def get_language():
+    """Detecta se o ambiente é pt-br ou en de forma robusta (Windows/Linux)."""
+    # 1. Windows: Pega o idioma da interface do usuário
+    if sys.platform == 'win32':
+        try:
+            windll = ctypes.windll.kernel32
+            lang_id = windll.GetUserDefaultUILanguage()
+            lang_code = locale.windows_locale.get(lang_id, "")
+            if 'pt_BR' in lang_code or 'pt_PT' in lang_code or 'Portuguese' in lang_code:
+                return 'pt_br'
+        except: pass
+
+    # 2. Linux/macOS/Geral: Variáveis de ambiente
+    for env in ('LANGUAGE', 'LC_ALL', 'LC_MESSAGES', 'LANG'):
+        val = os.environ.get(env)
+        if val and ('pt_BR' in val or 'pt-BR' in val or 'Portuguese' in val):
+            return 'pt_br'
+            
+    # 3. Fallback: locale module
+    try:
+        lang, _ = locale.getlocale()
+        if lang and ('pt_BR' in lang or 'Portuguese' in lang):
+            return 'pt_br'
+    except: pass
+            
+    return 'en'
+
+# Inicializa as traduções
+lang_code = get_language()
+t = TRANSLATIONS[lang_code]
+
+# --- Core Functions ---
 
 def parse_logos_data(data, kind=None, indent=0):
     """Extrai texto de um dado que pode ser XML ou Texto Puro"""
@@ -110,7 +196,7 @@ def parse_logos_xml(xml_content, kind=None, indent=0):
                     elif "heading3" in kind: prefix = "### "
                     elif "blockquote" in kind: prefix = "> "
                     elif "number" in kind: prefix = "1. "
-                    elif "illustration" in kind: prefix = "*Ilustração:* "
+                    elif "illustration" in kind: prefix = f"*{t['label_illustration']}:* "
                 
                 if indent > 0:
                     prefix = ("  " * indent) + (prefix or "- ")
@@ -123,7 +209,7 @@ def parse_logos_xml(xml_content, kind=None, indent=0):
         return re.sub(r'[\x00-\x1f]', '', text)
 
 def sanitize_filename(name):
-    if not name: return "Sem_Titulo"
+    if not name: return t['no_title']
     name = str(name).replace('\x00', '')
     name = re.sub(r'[\x00-\x1f]', '', name)
     name = re.sub(r'[\\/*?:"<>|]', "_", name).strip()
@@ -144,7 +230,7 @@ def find_databases(logos_base_path):
     return dbs
 
 def export_notes(db_path, base_output):
-    output_dir = os.path.join(base_output, "Notas")
+    output_dir = os.path.join(base_output, t['folder_notes'])
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -156,9 +242,9 @@ def export_notes(db_path, base_output):
         WHERE n.IsDeleted = 0 AND n.IsTrashed = 0
     """)
     notes = cursor.fetchall()
-    print(f"Exportando {len(notes)} Notas...")
+    print(t['msg_exporting_notes'].format(count=len(notes)))
     for note in notes:
-        nb_name = sanitize_filename(note['NotebookTitle'] or "Sem Caderno")
+        nb_name = sanitize_filename(note['NotebookTitle'] or t['no_notebook'])
         folder = os.path.join(output_dir, nb_name)
         if not os.path.exists(folder): os.makedirs(folder)
         
@@ -169,22 +255,22 @@ def export_notes(db_path, base_output):
                 anchors = json.loads(note['AnchorsJson'])
                 refs = [a['reference']['raw'].split('+')[-1].replace('.', ' ') for a in anchors if 'reference' in a]
                 if refs:
-                    anchors_text = "\n\n**Referências:** " + ", ".join(refs)
+                    anchors_text = f"\n\n**{t['label_references']}:** " + ", ".join(refs)
                 if not title and refs:
                     title = refs[0]
             except: pass
             
-        if not title: title = f"Nota_{note['NoteId']}"
+        if not title: title = f"{t['default_note_name']}_{note['NoteId']}"
         
         filename = f"{sanitize_filename(title)}_{note['NoteId']}.md"
         content = parse_logos_data(note['ContentRichText'])
         
-        md = f"---\ntitle: \"{title}\"\ncreated: {note['CreatedDate']}\nsource: Logos Notes\n---\n\n{content}{anchors_text}"
+        md = f"---\ntitle: \"{title}\"\ncreated: {note['CreatedDate']}\nsource: {t['source_notes']}\n---\n\n{content}{anchors_text}"
         with open(os.path.join(folder, filename), "w", encoding="utf-8") as f: f.write(md)
     conn.close()
 
 def export_sermons(db_path, base_output):
-    output_dir = os.path.join(base_output, "Sermoes")
+    output_dir = os.path.join(base_output, t['folder_sermons'])
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -194,21 +280,21 @@ def export_sermons(db_path, base_output):
         sermons = cursor.fetchall()
     except: return
     
-    print(f"Exportando {len(sermons)} Sermões...")
+    print(t['msg_exporting_sermons'].format(count=len(sermons)))
     for sermon in sermons:
         s_id = sermon['Id']
-        title = sermon['Title'] or f"Sermao_{s_id}"
+        title = sermon['Title'] or f"{t['default_sermon_name']}_{s_id}"
         cursor.execute("SELECT Content, Kind, Indent FROM Blocks WHERE DocumentId = ? AND IsDeleted = 0 ORDER BY Rank", (s_id,))
         blocks = cursor.fetchall()
         
         full_text = []
         for b in blocks:
             if b['Content']:
-                t = parse_logos_data(b['Content'], kind=b['Kind'], indent=b['Indent'])
-                if t: full_text.append(t)
+                t_content = parse_logos_data(b['Content'], kind=b['Kind'], indent=b['Indent'])
+                if t_content: full_text.append(t_content)
         
         filename = f"{sanitize_filename(title)}.md"
-        md = f"---\ntitle: \"{title}\"\ndate: {sermon['Date'] or sermon['ModifiedDate']}\nsource: Logos Sermon Builder\n---\n\n" + "\n\n".join(full_text)
+        md = f"---\ntitle: \"{title}\"\ndate: {sermon['Date'] or sermon['ModifiedDate']}\nsource: {t['source_sermons']}\n---\n\n" + "\n\n".join(full_text)
         with open(os.path.join(output_dir, filename), "w", encoding="utf-8") as f: f.write(md)
     conn.close()
 
@@ -219,7 +305,6 @@ def get_default_logos_path():
         if local_app_data:
             return os.path.join(local_app_data, "Logos")
     else:  # Linux/Unix (Assume-se oudedetai ou caminho customizado)
-        # Tenta encontrar o caminho padrão do oudedetai se existir
         home = os.path.expanduser("~")
         user = getpass.getuser()
         possible_paths = [
@@ -232,28 +317,28 @@ def get_default_logos_path():
     return ""
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Exportador de Notas e Sermões do Logos para Markdown.')
+    parser = argparse.ArgumentParser(description=t['arg_desc'])
     
     default_logos = get_default_logos_path()
     
-    parser.add_argument('--logos-path', '-l', default=default_logos, help='Caminho da pasta do Logos (AppData/Local/Logos)')
-    parser.add_argument('--output', '-o', default='Logos_Vault', help='Pasta de destino para os arquivos Markdown')
+    parser.add_argument('--logos-path', '-l', default=default_logos, help=t['arg_logos_path'])
+    parser.add_argument('--output', '-o', default=t['folder_vault'], help=t['arg_output'])
 
     args = parser.parse_args()
     
     if not args.logos_path or not os.path.exists(args.logos_path):
-        print(f"Erro: O caminho do Logos não foi encontrado: '{args.logos_path}'")
-        print("Use --logos-path para especificar o caminho manualmente.")
+        print(t['err_logos_path_not_found'].format(path=args.logos_path))
+        print(t['err_logos_path_usage'])
         exit(1)
 
     dbs = find_databases(args.logos_path)
 
     if not dbs['notes'] and not dbs['sermons']:
-        print(f"Erro: Não foram encontrados bancos de dados do Logos em: {args.logos_path}")
-        print("Verifique se o caminho aponta para a pasta 'Logos' dentro de AppData/Local.")
+        print(t['err_dbs_not_found'].format(path=args.logos_path))
+        print(t['err_dbs_hint'])
         exit(1)
 
     if dbs['notes']: export_notes(dbs['notes'], args.output)
     if dbs['sermons']: export_sermons(dbs['sermons'], args.output)
     
-    print(f"\nSucesso! Suas Notas e Sermões estão em: '{args.output}'")
+    print(t['msg_success'].format(path=args.output))
