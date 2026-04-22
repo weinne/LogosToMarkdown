@@ -10,6 +10,8 @@ import getpass
 import locale
 import sys
 import ctypes
+import shutil
+import tempfile
 
 # Script Logos -> Markdown (Versão Final Otimizada)
 # Foco exclusivo em Notas e Sermões Pessoais
@@ -29,11 +31,15 @@ TRANSLATIONS = {
         'default_sermon_name': 'Sermon',
         'msg_exporting_notes': 'Exporting {count} Notes...',
         'msg_exporting_sermons': 'Exporting {count} Sermons...',
+        'msg_updated': 'Updated: {file}',
+        'msg_created': 'Created: {file}',
+        'msg_no_change': 'No change: {file}',
         'err_logos_path_not_found': 'Error: Logos path not found: "{path}"',
         'err_logos_path_usage': 'Use --logos-path to specify the path manually.',
         'err_dbs_not_found': 'Error: No Logos databases found in: {path}',
         'err_dbs_hint': "Check if the path points to the 'Logos' folder inside AppData/Local.",
         'msg_success': "\nSuccess! Your Notes and Sermons are in: '{path}'",
+        'msg_config_created': "Configuration file created at: {path}\nYou can edit it to change default paths.",
         'arg_desc': 'Logos Notes and Sermons to Markdown Exporter.',
         'arg_logos_path': 'Logos folder path (AppData/Local/Logos)',
         'arg_output': 'Destination folder for Markdown files',
@@ -52,11 +58,15 @@ TRANSLATIONS = {
         'default_sermon_name': 'Sermao',
         'msg_exporting_notes': 'Exportando {count} Notas...',
         'msg_exporting_sermons': 'Exportando {count} Sermões...',
+        'msg_updated': 'Atualizado: {file}',
+        'msg_created': 'Criado: {file}',
+        'msg_no_change': 'Sem alteração: {file}',
         'err_logos_path_not_found': "Erro: O caminho do Logos não foi encontrado: '{path}'",
         'err_logos_path_usage': 'Use --logos-path para especificar o caminho manualmente.',
         'err_dbs_not_found': 'Erro: Não foram encontrados bancos de dados do Logos em: {path}',
         'err_dbs_hint': "Verifique se o caminho aponta para a pasta 'Logos' dentro de AppData/Local.",
         'msg_success': "\nSucesso! Suas Notas e Sermões estão em: '{path}'",
+        'msg_config_created': "Arquivo de configuração criado em: {path}\nVocê pode editá-lo para alterar os caminhos padrão.",
         'arg_desc': 'Exportador de Notas e Sermões do Logos para Markdown.',
         'arg_logos_path': 'Caminho da pasta do Logos (AppData/Local/Logos)',
         'arg_output': 'Pasta de destino para os arquivos Markdown',
@@ -139,22 +149,30 @@ def parse_logos_xml(xml_content, kind=None, indent=0):
                 style = para.get("Style", "")
                 para_text = []
                 for run in para.findall(".//Run"):
-                    text = run.get("Text", "")
-                    if not text: continue
+                    text_content = run.get("Text", "")
+                    if not text_content: continue
+                    
+                    leading_spaces = text_content[:len(text_content) - len(text_content.lstrip())]
+                    trailing_spaces = text_content[len(text_content.rstrip()):]
+                    clean_text = text_content.strip()
+                    
+                    if not clean_text:
+                        para_text.append(text_content)
+                        continue
                     
                     bold = (run.get("Bold") or "").lower() == "true" or (run.get("FontBold") or "").lower() == "true"
                     italic = (run.get("Italic") or "").lower() == "true" or (run.get("FontItalic") or "").lower() == "true"
                     underline = (run.get("Underline") or "").lower() == "true" or (run.get("FontUnderline") or "").lower() == "true"
                     strikethrough = (run.get("Strikethrough") or "").lower() == "true" or (run.get("FontStrikethrough") or "").lower() == "true"
 
-                    if bold: text = f"**{text}**"
-                    if italic: text = f"*{text}*"
-                    if underline: text = f"<u>{text}</u>"
-                    if strikethrough: text = f"~~{text}~~"
+                    if bold: clean_text = f"**{clean_text}**"
+                    if italic: clean_text = f"*{clean_text}*"
+                    if underline: clean_text = f"<u>{clean_text}</u>"
+                    if strikethrough: clean_text = f"~~{clean_text}~~"
                     
                     href = run.get("Hyperlink")
-                    if href: text = f"[{text}]({href})"
-                    para_text.append(text)
+                    if href: clean_text = f"[{clean_text}]({href})"
+                    para_text.append(f"{leading_spaces}{clean_text}{trailing_spaces}")
                 
                 content = "".join(para_text).strip()
                 if not content: continue
@@ -174,18 +192,26 @@ def parse_logos_xml(xml_content, kind=None, indent=0):
         else:
             current_text = []
             for run in root.findall(".//Run"):
-                text = run.get("Text", "")
-                if not text: continue
+                text_content = run.get("Text", "")
+                if not text_content: continue
                 
+                leading_spaces = text_content[:len(text_content) - len(text_content.lstrip())]
+                trailing_spaces = text_content[len(text_content.rstrip()):]
+                clean_text = text_content.strip()
+                
+                if not clean_text:
+                    current_text.append(text_content)
+                    continue
+
                 bold = (run.get("Bold") or "").lower() == "true" or (run.get("FontBold") or "").lower() == "true"
                 italic = (run.get("Italic") or "").lower() == "true" or (run.get("FontItalic") or "").lower() == "true"
                 
-                if bold: text = f"**{text}**"
-                if italic: text = f"*{text}*"
+                if bold: clean_text = f"**{clean_text}**"
+                if italic: clean_text = f"*{clean_text}*"
                 
                 href = run.get("Hyperlink")
-                if href: text = f"[{text}]({href})"
-                current_text.append(text)
+                if href: clean_text = f"[{clean_text}]({href})"
+                current_text.append(f"{leading_spaces}{clean_text}{trailing_spaces}")
                 
             content = "".join(current_text).strip()
             if content:
@@ -208,12 +234,68 @@ def parse_logos_xml(xml_content, kind=None, indent=0):
         text = re.sub(r'<[^>]+>', '', xml_content)
         return re.sub(r'[\x00-\x1f]', '', text)
 
+def write_if_changed(file_path, content):
+    """Grava o arquivo apenas se houver mudança, evitando toques desnecessários."""
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as f:
+            old_content = f.read()
+        if old_content == content:
+            # print(t['msg_no_change'].format(file=os.path.basename(file_path)))
+            return False
+        # print(t['msg_updated'].format(file=os.path.basename(file_path)))
+    else:
+        # print(t['msg_created'].format(file=os.path.basename(file_path)))
+        pass
+        
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return True
+
 def sanitize_filename(name):
     if not name: return t['no_title']
     name = str(name).replace('\x00', '')
     name = re.sub(r'[\x00-\x1f]', '', name)
     name = re.sub(r'[\\/*?:"<>|]', "_", name).strip()
     return name[:120]
+
+def load_config():
+    """Carrega configurações do arquivo .logostomarkdown.conf."""
+    config_paths = [
+        os.path.join(os.getcwd(), ".logostomarkdown.conf"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".logostomarkdown.conf")
+    ]
+    
+    if os.name == 'nt':
+        appdata = os.environ.get('APPDATA')
+        if appdata:
+            config_paths.append(os.path.join(appdata, "logostomarkdown", ".logostomarkdown.conf"))
+    else:
+        home = os.path.expanduser("~")
+        config_paths.append(os.path.join(home, ".config", "logostomarkdown", ".logostomarkdown.conf"))
+        config_paths.append(os.path.join(home, ".logostomarkdown.conf"))
+
+    for path in config_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f), path
+            except:
+                pass
+    return {}, None
+
+def save_default_config(path, logos_path, output):
+    """Cria um arquivo de configuração padrão."""
+    config = {
+        "logos_path": logos_path,
+        "output": output
+    }
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+        return True
+    except:
+        return False
 
 def find_databases(logos_base_path):
     dbs = {'notes': None, 'sermons': None}
@@ -266,7 +348,7 @@ def export_notes(db_path, base_output):
         content = parse_logos_data(note['ContentRichText'])
         
         md = f"---\ntitle: \"{title}\"\ncreated: {note['CreatedDate']}\nsource: {t['source_notes']}\n---\n\n{content}{anchors_text}"
-        with open(os.path.join(folder, filename), "w", encoding="utf-8") as f: f.write(md)
+        write_if_changed(os.path.join(folder, filename), md)
     conn.close()
 
 def export_sermons(db_path, base_output):
@@ -295,7 +377,7 @@ def export_sermons(db_path, base_output):
         
         filename = f"{sanitize_filename(title)}.md"
         md = f"---\ntitle: \"{title}\"\ndate: {sermon['Date'] or sermon['ModifiedDate']}\nsource: {t['source_sermons']}\n---\n\n" + "\n\n".join(full_text)
-        with open(os.path.join(output_dir, filename), "w", encoding="utf-8") as f: f.write(md)
+        write_if_changed(os.path.join(output_dir, filename), md)
     conn.close()
 
 def get_default_logos_path():
@@ -317,16 +399,27 @@ def get_default_logos_path():
     return ""
 
 if __name__ == "__main__":
+    # 1. Carrega configurações do arquivo
+    config, config_file_path = load_config()
+
     parser = argparse.ArgumentParser(description=t['arg_desc'])
-    
-    default_logos = get_default_logos_path()
-    
+
+    default_logos = config.get('logos_path') or get_default_logos_path()
+    default_output = config.get('output') or t['folder_vault']
+
     parser.add_argument('--logos-path', '-l', default=default_logos, help=t['arg_logos_path'])
-    parser.add_argument('--output', '-o', default=t['folder_vault'], help=t['arg_output'])
+    parser.add_argument('--output', '-o', default=default_output, help=t['arg_output'])
 
     args = parser.parse_args()
-    
+
+    # Cria arquivo de config se não existir
+    if not config_file_path:
+        new_config_path = os.path.join(os.getcwd(), ".logostomarkdown.conf")
+        if save_default_config(new_config_path, args.logos_path, args.output):
+            print(t['msg_config_created'].format(path=new_config_path))
+
     if not args.logos_path or not os.path.exists(args.logos_path):
+
         print(t['err_logos_path_not_found'].format(path=args.logos_path))
         print(t['err_logos_path_usage'])
         exit(1)
@@ -338,7 +431,19 @@ if __name__ == "__main__":
         print(t['err_dbs_hint'])
         exit(1)
 
-    if dbs['notes']: export_notes(dbs['notes'], args.output)
-    if dbs['sermons']: export_sermons(dbs['sermons'], args.output)
+    # 2. Cria pasta temporária e copia os DBs para permitir rodar com Logos aberto
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_notes = None
+        tmp_sermons = None
+        
+        if dbs['notes']:
+            tmp_notes = os.path.join(tmpdir, "notestool.db")
+            shutil.copy2(dbs['notes'], tmp_notes)
+            export_notes(tmp_notes, args.output)
+            
+        if dbs['sermons']:
+            tmp_sermons = os.path.join(tmpdir, "Sermon.db")
+            shutil.copy2(dbs['sermons'], tmp_sermons)
+            export_sermons(tmp_sermons, args.output)
     
     print(t['msg_success'].format(path=args.output))

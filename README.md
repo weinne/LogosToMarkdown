@@ -1,67 +1,40 @@
-# Logos to Markdown Export
+# Logos To Markdown
 
-This script automates the export of **Logos Bible Software** Notes and Sermons to Markdown files, compatible with applications like **Obsidian**, **Logseq**, or **Zettlr**.
+Exportador de Notas e Sermões do Logos Bible Software para arquivos Markdown.
 
-## Features
-- **Notes:** Exports your notes organized by Notebooks.
-- **Sermons:** Exports your sermons from the Sermon Builder.
-- **Formatting:** Preserves basic bold, italic, and metadata (YAML frontmatter).
-- **Internationalization:** Automatically detects system language (EN or PT-BR) for messages and folder names.
+## Novas Funcionalidades
 
-## Prerequisites
+- **Cópia Temporária**: O script agora cria uma cópia dos bancos de dados antes de processá-los, permitindo a execução mesmo com o Logos aberto.
+- **Arquivo de Configuração**: Suporte a `.logostomarkdown.conf` para salvar seus caminhos preferidos. O arquivo é criado automaticamente na primeira execução.
+- **Sincronização Inteligente**: Só atualiza arquivos que realmente foram alterados no Logos, preservando metadados do sistema de arquivos.
+- **Formatação Aprimorada**: Correções na conversão de negrito, itálico e outros estilos para garantir um Markdown limpo.
 
-To run this script, you need to have **Python 3** installed on your computer.
+## Como usar
 
-### How to install Python
+1.  Certifique-se de ter o Python instalado.
+2.  Execute o script:
+    ```bash
+    python logos_to_markdown.py
+    ```
+3.  Na primeira execução, um arquivo `.logostomarkdown.conf` será criado na pasta atual. Você pode editá-lo para fixar o caminho do seu Logos ou a pasta de destino.
 
-#### On Windows:
-1. Go to [python.org](https://www.python.org/downloads/).
-2. Click the download button for the latest version.
-3. **Important:** During installation, check the box **"Add Python to PATH"**.
-4. Follow the instructions to completion.
+## Arquivo de Configuração
 
-#### On Linux (Ubuntu/Debian):
-```bash
-sudo apt update
-sudo apt install python3
+O arquivo busca configurações nos seguintes locais:
+1.  Pasta atual
+2.  Pasta do script
+3.  `~/.config/logostomarkdown/` (Linux)
+4.  `%APPDATA%\logostomarkdown\` (Windows)
+
+Exemplo de conteúdo:
+```json
+{
+    "logos_path": "C:\\Users\\Usuario\\AppData\\Local\\Logos",
+    "output": "D:\\Notas\\Logos_Vault"
+}
 ```
 
-## How to Use
+## Requisitos
 
-1. Download the `logos_to_markdown.py` file.
-2. Open your terminal or command prompt in the folder where the file is located.
-3. Run the script:
-
-```bash
-python3 logos_to_markdown.py --output Logos_Vault
-```
-
-### Where is the Logos directory?
-
-The script tries to automatically detect the Logos path. If it fails, you will need to provide it manually using the `--logos-path` parameter.
-
-#### On Windows:
-It is usually located at:
-`C:\Users\YOUR_USER\AppData\Local\Logos`
-
-Example command:
-```bash
-python3 logos_to_markdown.py --logos-path "C:\Users\Username\AppData\Local\Logos" --output MyNotes
-```
-
-#### On Linux:
-If you use the `oudedetai` script from FaithLife-Community, the path is usually something like:
-`~/.local/share/FaithLife-Community/oudedetai/data/wine64_bottle/drive_c/users/YOUR_USER/AppData/Local/Logos`
-
-Example command:
-```bash
-python3 logos_to_markdown.py --logos-path "/path/to/logos" --output Logos_Vault
-```
-
-## Available Parameters
-
-- `--logos-path` or `-l`: Manual path to the Logos folder.
-- `--output` or `-o`: Name of the destination folder for the `.md` files (Default: `Logos_Vault`).
-
-## Important Note
-This script accesses Logos' local SQLite databases in read-only mode. Make sure Logos is closed when running the script to avoid database access conflicts.
+- Python 3.x
+- Bibliotecas padrão (`sqlite3`, `xml`, etc.)
