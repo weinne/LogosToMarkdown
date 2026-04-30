@@ -383,8 +383,24 @@ def export_sermons(db_path, base_output):
                 tags_data = json.loads(sermon['TagsJson'])
                 ref_tags = tags_data.get('referenceTags', [])
                 if ref_tags:
-                    # Tenta extrair uma referência legível
-                    passage = ", ".join([r['raw'].split('.')[-1].replace('+', ' ') for r in ref_tags])
+                    # Tenta extrair uma referência legível, ignorando o prefixo numérico do Logos se possível
+                    parts = []
+                    for r in ref_tags:
+                        raw = r['raw']
+                        # Formato comum: bible+jfa.1.1.1 ou bible.1.1.1
+                        # O Logos usa números internos para livros. 
+                        # Vamos tentar pegar o que for mais legível ou manter o raw se falhar.
+                        ref_display = raw.split('.')[-1].replace('+', ' ')
+                        if not ref_display[0].isdigit(): # Se não começar com número, é mais provável que seja o nome
+                             parts.append(ref_display)
+                        else:
+                             # Se for apenas números, tentamos o penúltimo segmento que às vezes tem o nome
+                             segments = raw.replace('+', '.').split('.')
+                             if len(segments) > 1:
+                                 parts.append(segments[-2].capitalize() + " " + segments[-1])
+                             else:
+                                 parts.append(ref_display)
+                    passage = ", ".join(parts)
                 
                 topic_tags = tags_data.get('topicTags', [])
                 for topic in topic_tags:
@@ -400,9 +416,13 @@ def export_sermons(db_path, base_output):
                 if b['Kind'] == 'passage' and b['PassageJson']:
                     try:
                         p_data = json.loads(b['PassageJson'])
+                        # O PassageJson costuma ter o título amigável no resource ou no próprio JSON
+                        res_title = p_data.get('resource', {}).get('abbreviatedTitle', '')
                         raw_ref = p_data.get('reference', {}).get('raw', '')
                         if raw_ref:
-                            passage = raw_ref.split('.')[-1].replace('+', ' ')
+                            ref_parts = raw_ref.split('.')
+                            ref_readable = ref_parts[-1].replace('+', ' ')
+                            passage = f"{ref_readable} ({res_title})" if res_title else ref_readable
                             break
                     except: pass
 
@@ -427,8 +447,10 @@ def export_sermons(db_path, base_output):
         if church: frontmatter.append(f"church: \"{church}\"")
         if tags: frontmatter.append(f"tags: [{', '.join([f'\"{tag}\"' for tag in tags])}]")
         if description: 
-            clean_desc = description.replace('\n', ' ').replace('\r', '').strip()
-            frontmatter.append(f"description: \"{clean_desc}\"")
+            # Limpa tags XML/HTML da descrição usando a função já existente
+            clean_desc = parse_logos_data(description).replace('\n', ' ').replace('\r', '').strip()
+            if clean_desc:
+                frontmatter.append(f"description: \"{clean_desc}\"")
         
         frontmatter.append(f"source: {t['source_sermons']}")
         frontmatter.append("---")
