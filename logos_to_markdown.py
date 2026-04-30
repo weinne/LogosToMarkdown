@@ -108,6 +108,23 @@ t = TRANSLATIONS[lang_code]
 
 # --- Core Functions ---
 
+BIBLE_BOOKS = {
+    "1": "Gênesis", "2": "Êxodo", "3": "Levítico", "4": "Números", "5": "Deuteronômio",
+    "6": "Josué", "7": "Juízes", "8": "Rute", "9": "1Samuel", "10": "2Samuel",
+    "11": "1Reis", "12": "2Reis", "13": "1Crônicas", "14": "2Crônicas", "15": "Esdras",
+    "16": "Neemias", "17": "Ester", "18": "Jó", "19": "Salmos", "20": "Provérbios",
+    "21": "Eclesiastes", "22": "Cânticos", "23": "Isaías", "24": "Jeremias", "25": "Lamentações",
+    "26": "Ezequiel", "27": "Daniel", "28": "Oséias", "29": "Joel", "30": "Amós",
+    "31": "Obadias", "32": "Jonas", "33": "Miquéias", "34": "Naum", "35": "Habacuque",
+    "36": "Sofonias", "37": "Ageu", "38": "Zacarias", "39": "Malaquias",
+    "61": "Mateus", "62": "Marcos", "63": "Lucas", "64": "João", "65": "Atos",
+    "66": "Romanos", "67": "1Coríntios", "68": "2Coríntios", "69": "Gálatas", "70": "Efésios",
+    "71": "Filipenses", "72": "Colossenses", "73": "1Tessalonicenses", "74": "2Tessalonicenses",
+    "75": "1Timóteo", "76": "2Timóteo", "77": "Tito", "78": "Filemom", "79": "Hebreus",
+    "80": "Tiago", "81": "1Pedro", "82": "2Pedro", "83": "1João", "84": "2João",
+    "85": "3João", "86": "Judas", "87": "Apocalipse"
+}
+
 def parse_logos_data(data, kind=None, indent=0):
     """Extrai texto de um dado que pode ser XML ou Texto Puro"""
     if not data: return ""
@@ -378,28 +395,47 @@ def export_sermons(db_path, base_output):
         # Passagens e Tags
         passage = ""
         tags = []
+
+        def decode_reference(raw):
+            """Converte bible+jfa.66.4.1 em Romanos 4.1 ou bible.66.4.1-66.4.25 em Romanos 4.1-25"""
+            if not raw: return ""
+            
+            parts = raw.split('.')
+            if len(parts) < 3: return raw
+            
+            book_id = parts[1]
+            if '+' in book_id: book_id = book_id.split('+')[-1]
+            book_name = BIBLE_BOOKS.get(book_id, book_id)
+            
+            if '-' in raw:
+                try:
+                    sides = raw.split('-')
+                    start_parts = sides[0].split('.')
+                    end_parts = sides[1].split('.')
+                    
+                    cap = start_parts[2]
+                    start_v = start_parts[3] if len(start_parts) > 3 else ""
+                    end_v = end_parts[-1]
+                    
+                    if start_v:
+                        return f"{book_name} {cap}.{start_v}-{end_v}"
+                    else:
+                        return f"{book_name} {cap}-{end_v}"
+                except: pass
+
+            cap = parts[2]
+            if len(parts) > 3:
+                verso = parts[3]
+                return f"{book_name} {cap}.{verso}"
+            
+            return f"{book_name} {cap}"
+
         if sermon['TagsJson']:
             try:
                 tags_data = json.loads(sermon['TagsJson'])
                 ref_tags = tags_data.get('referenceTags', [])
                 if ref_tags:
-                    # Tenta extrair uma referência legível, ignorando o prefixo numérico do Logos se possível
-                    parts = []
-                    for r in ref_tags:
-                        raw = r['raw']
-                        # Formato comum: bible+jfa.1.1.1 ou bible.1.1.1
-                        # O Logos usa números internos para livros. 
-                        # Vamos tentar pegar o que for mais legível ou manter o raw se falhar.
-                        ref_display = raw.split('.')[-1].replace('+', ' ')
-                        if not ref_display[0].isdigit(): # Se não começar com número, é mais provável que seja o nome
-                             parts.append(ref_display)
-                        else:
-                             # Se for apenas números, tentamos o penúltimo segmento que às vezes tem o nome
-                             segments = raw.replace('+', '.').split('.')
-                             if len(segments) > 1:
-                                 parts.append(segments[-2].capitalize() + " " + segments[-1])
-                             else:
-                                 parts.append(ref_display)
+                    parts = [decode_reference(r['raw']) for r in ref_tags]
                     passage = ", ".join(parts)
                 
                 topic_tags = tags_data.get('topicTags', [])
@@ -416,13 +452,9 @@ def export_sermons(db_path, base_output):
                 if b['Kind'] == 'passage' and b['PassageJson']:
                     try:
                         p_data = json.loads(b['PassageJson'])
-                        # O PassageJson costuma ter o título amigável no resource ou no próprio JSON
-                        res_title = p_data.get('resource', {}).get('abbreviatedTitle', '')
                         raw_ref = p_data.get('reference', {}).get('raw', '')
                         if raw_ref:
-                            ref_parts = raw_ref.split('.')
-                            ref_readable = ref_parts[-1].replace('+', ' ')
-                            passage = f"{ref_readable} ({res_title})" if res_title else ref_readable
+                            passage = decode_reference(raw_ref)
                             break
                     except: pass
 
