@@ -220,7 +220,7 @@ def parse_logos_xml(xml_content, kind=None, indent=0):
                     if "heading1" in kind: prefix = "# "
                     elif "heading2" in kind: prefix = "## "
                     elif "heading3" in kind: prefix = "### "
-                    elif "blockquote" in kind: prefix = "> "
+                    elif "blockquote" in kind or "passage" in kind: prefix = "> "
                     elif "number" in kind: prefix = "1. "
                     elif "illustration" in kind: prefix = f"*{t['label_illustration']}:* "
                 
@@ -311,7 +311,7 @@ def find_databases(logos_base_path):
     
     return dbs
 
-def export_notes(db_path, base_output):
+def export_notes(db_path, base_output, config=None):
     output_dir = os.path.join(base_output, t['folder_notes'])
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     conn = sqlite3.connect(db_path)
@@ -366,9 +366,46 @@ def export_sermons(db_path, base_output):
     for sermon in sermons:
         s_id = sermon['Id']
         title = sermon['Title'] or f"{t['default_sermon_name']}_{s_id}"
-        cursor.execute("SELECT Content, Kind, Indent FROM Blocks WHERE DocumentId = ? AND IsDeleted = 0 ORDER BY Rank", (s_id,))
+        
+        # Propriedades extras
+        series = sermon['Series']
+        series_num = sermon['SeriesNumber']
+        date = sermon['Date'] or sermon['ModifiedDate']
+        author = sermon['AuthorName']
+        church = sermon['ChurchTitle']
+        description = sermon['Description']
+        
+        # Passagens e Tags
+        passage = ""
+        tags = []
+        if sermon['TagsJson']:
+            try:
+                tags_data = json.loads(sermon['TagsJson'])
+                ref_tags = tags_data.get('referenceTags', [])
+                if ref_tags:
+                    # Tenta extrair uma referência legível
+                    passage = ", ".join([r['raw'].split('.')[-1].replace('+', ' ') for r in ref_tags])
+                
+                topic_tags = tags_data.get('topicTags', [])
+                for topic in topic_tags:
+                    if 'name' in topic: tags.append(topic['name'])
+            except: pass
+
+        cursor.execute("SELECT Content, Kind, Indent, PassageJson FROM Blocks WHERE DocumentId = ? AND IsDeleted = 0 ORDER BY Rank", (s_id,))
         blocks = cursor.fetchall()
         
+        # Se não houver passagem nas tags, tenta pegar do primeiro bloco de passagem
+        if not passage:
+            for b in blocks:
+                if b['Kind'] == 'passage' and b['PassageJson']:
+                    try:
+                        p_data = json.loads(b['PassageJson'])
+                        raw_ref = p_data.get('reference', {}).get('raw', '')
+                        if raw_ref:
+                            passage = raw_ref.split('.')[-1].replace('+', ' ')
+                            break
+                    except: pass
+
         full_text = []
         for b in blocks:
             if b['Content']:
@@ -376,7 +413,27 @@ def export_sermons(db_path, base_output):
                 if t_content: full_text.append(t_content)
         
         filename = f"{sanitize_filename(title)}.md"
-        md = f"---\ntitle: \"{title}\"\ndate: {sermon['Date'] or sermon['ModifiedDate']}\nsource: {t['source_sermons']}\n---\n\n" + "\n\n".join(full_text)
+        
+        # Constrói o Frontmatter
+        frontmatter = [
+            "---",
+            f"title: \"{title}\"",
+            f"date: {date}"
+        ]
+        if series: frontmatter.append(f"series: \"{series}\"")
+        if series_num: frontmatter.append(f"series_number: {series_num}")
+        if passage: frontmatter.append(f"passage: \"{passage}\"")
+        if author: frontmatter.append(f"author: \"{author}\"")
+        if church: frontmatter.append(f"church: \"{church}\"")
+        if tags: frontmatter.append(f"tags: [{', '.join([f'\"{tag}\"' for tag in tags])}]")
+        if description: 
+            clean_desc = description.replace('\n', ' ').replace('\r', '').strip()
+            frontmatter.append(f"description: \"{clean_desc}\"")
+        
+        frontmatter.append(f"source: {t['source_sermons']}")
+        frontmatter.append("---")
+        
+        md = "\n".join(frontmatter) + "\n\n" + "\n\n".join(full_text)
         write_if_changed(os.path.join(output_dir, filename), md)
     conn.close()
 
@@ -439,7 +496,7 @@ if __name__ == "__main__":
         if dbs['notes']:
             tmp_notes = os.path.join(tmpdir, "notestool.db")
             shutil.copy2(dbs['notes'], tmp_notes)
-            export_notes(tmp_notes, args.output)
+            export_notes(tmp_notes, args.output, config)
             
         if dbs['sermons']:
             tmp_sermons = os.path.join(tmpdir, "Sermon.db")
